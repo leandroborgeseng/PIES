@@ -73,7 +73,12 @@ export function EquipamentosExplorer({ equipamentos, initialBusca = '' }: { equi
                 <td>{eq.anvisa}</td>
                 <td>{formatBRL(eq.cco)}</td>
                 <td className="mono">{eq.score ?? 'N/I'}</td>
-                <td><Link className="button secondary" href={`/equipamentos/${eq.id}`}>Ver</Link></td>
+                <td>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <Link className="button secondary" href={`/equipamentos/${eq.id}`}>Ver</Link>
+                    <Link className="button secondary" href={`/pdf/item/${eq.id}`}>PDF</Link>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

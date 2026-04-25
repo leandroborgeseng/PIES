@@ -346,6 +346,23 @@ export function ProjetoPlanner({ ambientes, equipamentos }: { ambientes: Ambient
             <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--low)', fontWeight: 900 }}>{formatBRL(totalFinal)}</div><strong>Total final</strong></div>
           </div>
 
+          {projetos.length > 0 && (
+            <div className="card card-pad">
+              <h3 className="section-title"><FileText size={18} /> PDFs por área</h3>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {projetos.map((projeto) => (
+                  <Link
+                    key={projeto.localidade.id}
+                    className="button secondary"
+                    href={`/pdf/area?localidadeId=${projeto.localidade.id}&quantidade=${projeto.parametroProjeto}`}
+                  >
+                    PDF · {projeto.localidade.nome}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="card card-pad">
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
@@ -421,7 +438,7 @@ export function ProjetoPlanner({ ambientes, equipamentos }: { ambientes: Ambient
 
           <div className="card card-pad">
             <h3 className="section-title"><FileText size={18} /> Resumo das áreas contempladas</h3>
-            <div className="grid grid-2">{projetos.map((projeto) => <div key={projeto.localidade.id} className="card card-pad"><strong>{projeto.localidade.setorNome} · {projeto.localidade.nome}</strong><p className="subtle">{projeto.parametroProjeto} {projeto.parametroLabel} · {projeto.itens.length} itens sugeridos · base {projeto.baseParametro}</p></div>)}</div>
+            <div className="grid grid-2">{projetos.map((projeto) => <div key={projeto.localidade.id} className="card card-pad"><strong>{projeto.localidade.setorNome} · {projeto.localidade.nome}</strong><p className="subtle">{projeto.parametroProjeto} {projeto.parametroLabel} · {projeto.itens.length} itens sugeridos · base {projeto.baseParametro}</p><Link className="button secondary" href={`/pdf/area?localidadeId=${projeto.localidade.id}&quantidade=${projeto.parametroProjeto}`}>Abrir PDF da área</Link></div>)}</div>
           </div>
         </section>
       )}

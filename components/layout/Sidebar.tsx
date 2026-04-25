@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { Activity, AlertTriangle, ClipboardList, Settings2 } from 'lucide-react';
+import { Activity, AlertTriangle, ClipboardList, FileText, Settings2 } from 'lucide-react';
 
 const items = [
   { href: '/', label: 'Novo Projeto', icon: ClipboardList },
   { href: '/areas', label: 'Áreas e Itens', icon: Settings2 },
   { href: '/equipamentos', label: 'Catálogo Técnico', icon: Activity },
   { href: '/alertas', label: 'Alertas ANVISA', icon: AlertTriangle },
+  { href: '/pdf', label: 'PDFs de Teste', icon: FileText },
 ];
 
 export function Sidebar() {
