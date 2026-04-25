@@ -1,0 +1,452 @@
+// ============================================================
+// AION Engenharia — Schema do Sistema de Gestão Hospitalar
+// Versão 2.0 — atualizado com KB Enriched completo
+// Cole este arquivo em: prisma/schema.prisma
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"          // troque para "postgresql" no Supabase
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// KNOWLEDGE BASE — dados vindos do KB Enriched v2.0
+// ─────────────────────────────────────────────────────────────
+
+// Catálogo mestre de equipamentos (201 itens)
+model EquipmentCatalog {
+  id                       Int      @id @default(autoincrement())
+  nome                     String   @unique
+  valorUnitarioReferencia  Float    @default(0)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  // ── Vínculo POP ───────────────────────────────────────────
+  popId  Int?
+  pop    EquipmentPOP? @relation(fields: [popId], references: [id])
+
+  // ── CATMAT ────────────────────────────────────────────────
+  catmatCodigo         String?   // ex: "427770"
+  catmatDescricao      String?   // descrição CATMAT/SIASG
+  catmatGrupo          String?   // ex: "VENTILADOR PULMONAR"
+  catmatFonte          String?   // "BPS_MATCH" | "CURADO_AION"
+  catmatConfiabilidade String?   // "ALTA" | "MEDIA"
+
+  // ── ANVISA ────────────────────────────────────────────────
+  anvisaClasse           String?   // "I" | "II" | "III" | "IV"
+  anvisaBaseClassificacao String?
+  anvisaTipoProduto      String?
+  anvisaRequerRegistro   Boolean  @default(false)
+  anvisaRequerBpf        Boolean  @default(false)
+  anvisaNotaRegulatoria  String?
+
+  // ── Vida Útil ─────────────────────────────────────────────
+  vidaUtilAnos              Int?
+  vidaUtilCategoriaEcri     String?
+  vidaUtilAlertaAnos        Int?
+  vidaUtilRiscoObsolescencia String?  // "BAIXO" | "MÉDIO" | "ALTO"
+  vidaUtilSubstituicaoAcel  Boolean  @default(false)
+  vidaUtilDepreciacaoAnualPct Float?
+
+  // ── Planejamento Financeiro ───────────────────────────────
+  planejValorReposicao         Float?
+  planejCustoManutencaoLimite  Float?
+  planejDepreciacaoAnual        Float?
+
+  // ── Criticidade Clínica ───────────────────────────────────
+  criticidadeImpactoFalha       String?   // "CRÍTICO" | "ALTO" | "MÉDIO" | "BAIXO"
+  criticidadeIndice             String?   // "MÁXIMO" | "ALTO" | "MÉDIO" | "BAIXO"
+  criticidadePrioridadeReposicao String?
+  criticidadeEstoqueRecomendado String?
+  criticidadeJustificativa      String?
+
+  // ── Score de Risco Composto ───────────────────────────────
+  scoreRiscoTotal       Int?      // 0-100
+  scoreRiscoNivel       String?   // "CRÍTICO" | "ALTO" | "MÉDIO" | "BAIXO"
+  scoreRiscoPrioridade  String?   // "P1" | "P2" | "P3" | "P4"
+  scoreDimCriticidade   Int?      // 0-25
+  scoreDimAnvisa        Int?      // 0-25
+  scoreDimObsolescencia Int?      // 0-25
+  scoreDimCco           Int?      // 0-25
+
+  // ── Instalação ────────────────────────────────────────────
+  conexaoGases     String?   // JSON: ["O2","AR","VAC"]
+  conexaoEletrica  String?   // JSON: ["CI","NO-BREAK"]
+  conexaoHidraulica String?
+  conexaoRedeTi    String?
+  conexaoNotas     String?
+
+  // ── Elétrica (TCE) ────────────────────────────────────────
+  tceTensaoV         String?   // JSON: ["127","220"]
+  tcePotenciaW       Float?
+  tcePotenciaKw      Float?
+  tceTomada          String?   // JSON: ["127V","CI"]
+
+  // ── Normas Técnicas ───────────────────────────────────────
+  normasAbntIec       String?   // JSON array de normas
+  normasAnvisaRdc     String?   // JSON array de RDCs
+  normasOutras        String?   // JSON array
+  normasCategoriaIec  String?
+  normasEnsaios       String?   // JSON array de ensaios obrigatórios
+
+  // ── Garantia ──────────────────────────────────────────────
+  garantiaMinimaM  Int?      // meses
+
+  // ── Peças e Consumíveis ───────────────────────────────────
+  pecasConsumiveisJson  String?  // JSON completo (consumiveis + pecas_reposicao)
+  ccoAnualBrl           Float?   // custo operacional anual total
+
+  // ── BPS Preço ─────────────────────────────────────────────
+  bpsStatus        String?   // "ENCONTRADO" | "NÃO ENCONTRADO"
+  bpsPrecoMedio    Float?
+  bpsPrecoMin      Float?
+  bpsPrecoMax      Float?
+  bpsNCompras      Int?
+  bpsCatmatCodigo  String?
+
+  // ── Descritivo Técnico ────────────────────────────────────
+  descritivoVersao    String?   // "R01"
+  descritivoStatus    String?   // "RASCUNHO" | "APROVADO"
+  descritivoConteudo  String?   // texto completo 11 seções
+  descritivoData      String?
+
+  // ── Fabricantes de Referência ─────────────────────────────
+  fabricantesJson  String?   // JSON: [{nome, pais, site, representante_brasil}]
+
+  // ── Relações ──────────────────────────────────────────────
+  atribuicoes   TemplateAssignment[]
+  itensProjeto  ProjectItem[]
+  fabricantes   EquipmentFabricante[]
+}
+
+// Fabricantes em tabela separada para facilitar consultas
+model EquipmentFabricante {
+  id                  Int              @id @default(autoincrement())
+  equipment           EquipmentCatalog @relation(fields: [equipmentId], references: [id])
+  equipmentId         Int
+  nome                String
+  paisOrigem          String?
+  site                String?
+  representanteBrasil String?
+  observacao          String?
+  ordem               Int              @default(1)   // 1=principal, 2=alternativo, 3=alternativo
+
+  @@index([equipmentId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// POPs DE MANUTENÇÃO
+// ─────────────────────────────────────────────────────────────
+
+model EquipmentPOP {
+  id       Int    @id @default(autoincrement())
+  nomePop  String @unique
+
+  // ── Manutenção Preventiva ─────────────────────────────────
+  preventivaPeriodicidadeMeses  Int?
+  preventivaCodigo              String?
+
+  // ── Calibração ───────────────────────────────────────────
+  calibracaoPeriodicidadeMeses  Int?
+  calibracaoParametros          String?
+  calibracaoTolerâncias         String?
+  calibracaoCodigo              String?
+
+  // ── Segurança Elétrica ────────────────────────────────────
+  segurancaEletricaMeses        Int?
+  segurancaEletricaClasse       String?
+  segurancaEletricaTipo         String?
+  segurancaEletricaPontos       String?
+  segurancaEletricaCodigo       String?
+
+  // ── Qualificação ─────────────────────────────────────────
+  qualificacaoMeses             Int?
+  qualificacaoCodigo            String?
+
+  // ── Resumo ────────────────────────────────────────────────
+  temCalibracao           Boolean @default(false)
+  temSegurancaEletrica    Boolean @default(false)
+  temQualificacao         Boolean @default(false)
+  proximaAcao             String?
+  cicloDescricao          String?
+
+  createdAt  DateTime @default(now())
+
+  equipamentos  EquipmentCatalog[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// SETORES E LOCALIDADES
+// ─────────────────────────────────────────────────────────────
+
+model HospitalSector {
+  id         Int      @id @default(autoincrement())
+  nome       String   @unique
+  pavimento  String?
+
+  // ── CCO Agregado (calculado no seed) ─────────────────────
+  investimentoTotal  Float?   // soma de todos os equipamentos do setor
+  ccoAnualTotal      Float?   // custo operacional anual do setor
+  ratioCcoInvest     Float?   // % CCO / investimento
+
+  createdAt  DateTime @default(now())
+
+  localidades SectorLocality[]
+}
+
+model SectorLocality {
+  id       Int    @id @default(autoincrement())
+  nome     String
+  setor    HospitalSector @relation(fields: [setorId], references: [id])
+  setorId  Int
+
+  // ── CCO Agregado da Localidade ────────────────────────────
+  investimentoTotal  Float?
+  ccoAnualTotal      Float?
+
+  atribuicoes  TemplateAssignment[]
+  areas        ProjectArea[]
+
+  @@unique([setorId, nome])
+}
+
+// ─────────────────────────────────────────────────────────────
+// ATRIBUIÇÕES (PIES) — qual equip vai em qual localidade
+// ─────────────────────────────────────────────────────────────
+
+model TemplateAssignment {
+  id          Int    @id @default(autoincrement())
+  locality    SectorLocality   @relation(fields: [localityId], references: [id])
+  localityId  Int
+  equipment   EquipmentCatalog @relation(fields: [equipmentId], references: [id])
+  equipmentId Int
+  qtdAdquirir Int    @default(0)
+  qtdFase1    Int    @default(0)
+  qtdFase2    Int    @default(0)
+  valorUnitario Float @default(0)
+  observacao  String?
+
+  // ── Regulatório ───────────────────────────────────────────
+  classificacao           Classificacao  @default(RECOMENDADO)
+  rdcReferencia           String?
+  justificativa           String?
+  condicao                String?
+
+  // ── Dimensionamento ───────────────────────────────────────
+  scalingType             ScalingType    @default(FIXED)
+  scalingN                Int?
+  parametroDimensionamento String?
+
+  // ── CCO desta atribuição ──────────────────────────────────
+  ccoAnualAtribuicao  Float?   // cco_unitario × qtd_adquirir
+
+  @@index([localityId])
+  @@index([equipmentId])
+  @@index([classificacao])
+}
+
+enum Classificacao {
+  OBRIGATORIO
+  RECOMENDADO
+  CONDICIONAL
+  OPCIONAL
+}
+
+enum ScalingType {
+  PER_BED
+  PER_N_BEDS
+  PER_SALA
+  FIXED
+}
+
+// ─────────────────────────────────────────────────────────────
+// HOSPITAIS E PROJETOS
+// ─────────────────────────────────────────────────────────────
+
+model Hospital {
+  id       Int            @id @default(autoincrement())
+  nome     String
+  cidade   String?
+  estado   String?
+  gestora  String?
+  leitos   Int?
+  status   HospitalStatus @default(ATIVO)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  projetos  Project[]
+}
+
+enum HospitalStatus {
+  ATIVO
+  INATIVO
+  CONCLUIDO
+}
+
+model Project {
+  id          Int           @id @default(autoincrement())
+  nome        String
+  hospital    Hospital      @relation(fields: [hospitalId], references: [id])
+  hospitalId  Int
+  descricao   String?
+  fase        Int           @default(1)
+  status      ProjectStatus @default(PLANEJAMENTO)
+  orcamento   Float?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  areas  ProjectArea[]
+  itens  ProjectItem[]
+}
+
+enum ProjectStatus {
+  PLANEJAMENTO
+  EM_EXECUCAO
+  CONCLUIDO
+  SUSPENSO
+}
+
+model ProjectArea {
+  id          Int            @id @default(autoincrement())
+  projeto     Project        @relation(fields: [projectId], references: [id])
+  projectId   Int
+  locality    SectorLocality @relation(fields: [localityId], references: [id])
+  localityId  Int
+  nomeCustom  String?
+  quantidade  Int            @default(1)
+
+  itens  ProjectItem[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// PROCESSO DE COMPRA
+// ─────────────────────────────────────────────────────────────
+
+model ProjectItem {
+  id           Int              @id @default(autoincrement())
+  projeto      Project          @relation(fields: [projectId], references: [id])
+  projectId    Int
+  area         ProjectArea      @relation(fields: [areaId], references: [id])
+  areaId       Int
+  equipment    EquipmentCatalog @relation(fields: [equipmentId], references: [id])
+  equipmentId  Int
+  quantidade   Int              @default(1)
+  fase         Int              @default(1)
+  status       ItemStatus       @default(A_COTAR)
+  valorUnitario Float?
+  valorTotal    Float?
+  observacao   String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  descritivo   TechnicalSpec?
+  cotacoes     Quotation[]
+  pedidos      PurchaseOrder[]
+  recebimento  Delivery?
+  testes       AcceptanceTest?
+
+  @@index([projectId, status])
+}
+
+enum ItemStatus {
+  A_COTAR
+  COTADO
+  EM_LICITACAO
+  PEDIDO_REALIZADO
+  EM_TRANSITO
+  ENTREGUE
+  EM_TESTE
+  APROVADO
+  REPROVADO
+}
+
+model TechnicalSpec {
+  id          Int         @id @default(autoincrement())
+  item        ProjectItem @relation(fields: [itemId], references: [id])
+  itemId      Int         @unique
+  conteudo    String
+  normas      String?
+  revisao     String      @default("R00")
+  aprovado    Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Quotation {
+  id            Int         @id @default(autoincrement())
+  item          ProjectItem @relation(fields: [itemId], references: [id])
+  itemId        Int
+  fornecedor    String
+  marca         String?
+  modelo        String?
+  valorUnitario Float
+  prazoEntrega  Int?
+  validade      DateTime?
+  selecionada   Boolean     @default(false)
+  observacao    String?
+  createdAt     DateTime    @default(now())
+}
+
+model PurchaseOrder {
+  id              Int         @id @default(autoincrement())
+  item            ProjectItem @relation(fields: [itemId], references: [id])
+  itemId          Int
+  numeroPedido    String?
+  fornecedor      String
+  valorTotal      Float
+  dataPedido      DateTime    @default(now())
+  previsaoEntrega DateTime?
+  status          OrderStatus @default(EMITIDO)
+  observacao      String?
+
+  entregas  Delivery[]
+}
+
+enum OrderStatus {
+  EMITIDO
+  CONFIRMADO
+  EM_PRODUCAO
+  DESPACHADO
+  ENTREGUE
+  CANCELADO
+}
+
+model Delivery {
+  id              Int            @id @default(autoincrement())
+  item            ProjectItem    @relation(fields: [itemId], references: [id])
+  itemId          Int            @unique
+  pedido          PurchaseOrder? @relation(fields: [pedidoId], references: [id])
+  pedidoId        Int?
+  dataRecebimento DateTime       @default(now())
+  numeroSerie     String?
+  numeroNF        String?
+  conforme        Boolean        @default(false)
+  divergencias    String?
+  responsavel     String?
+  fotoUrl         String?
+  observacao      String?
+}
+
+model AcceptanceTest {
+  id               Int         @id @default(autoincrement())
+  item             ProjectItem @relation(fields: [itemId], references: [id])
+  itemId           Int         @unique
+  dataTeste        DateTime    @default(now())
+  tecnico          String?
+  resultado        TestResult
+  segurancaEletrica Boolean    @default(false)
+  funcional        Boolean     @default(false)
+  laudoUrl         String?
+  observacoes      String?
+}
+
+enum TestResult {
+  APROVADO
+  APROVADO_COM_RESSALVAS
+  REPROVADO
+  PENDENTE
+}
