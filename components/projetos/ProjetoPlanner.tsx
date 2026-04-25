@@ -253,7 +253,19 @@ export function ProjetoPlanner({ ambientes }: { ambientes: Ambiente[] }) {
                       <td><input className="input mono" style={{ width: 130 }} type="number" min={0} value={item.valorFinal} disabled={item.excluido} onChange={(e) => atualizarEdicao(item.key, { valorUnitario: Number(e.target.value) || 0 })} /></td>
                       <td><strong>{formatBRL(item.totalFinal)}</strong></td>
                       <td><button className="button secondary" type="button" onClick={() => atualizarEdicao(item.key, { excluido: !item.excluido })}><Trash2 size={14} /> {item.excluido ? 'Reincluir' : 'Excluir'}</button>{alterado && <button className="button secondary" type="button" style={{ marginTop: 8 }} onClick={() => resetarItem(item.key)}>Usar sistema</button>}</td>
-                      <td><textarea className="textarea" placeholder={alterado ? 'Obrigatório: explique a alteração' : 'Sem alteração'} value={item.justificativaAlteracao} disabled={!alterado} onChange={(e) => atualizarEdicao(item.key, { justificativa: e.target.value })} style={{ minWidth: 220, minHeight: 74, borderColor: alterado && !item.justificativaAlteracao.trim() ? 'var(--high)' : undefined }} /></td>
+                      <td>
+                        {alterado ? (
+                          <textarea
+                            className="textarea"
+                            placeholder="Obrigatório: explique a alteração"
+                            value={item.justificativaAlteracao}
+                            onChange={(e) => atualizarEdicao(item.key, { justificativa: e.target.value })}
+                            style={{ minWidth: 220, minHeight: 74, borderColor: !item.justificativaAlteracao.trim() ? 'var(--high)' : undefined }}
+                          />
+                        ) : (
+                          <span className="subtle">—</span>
+                        )}
+                      </td>
                     </tr>;
                   })}
                 </tbody>

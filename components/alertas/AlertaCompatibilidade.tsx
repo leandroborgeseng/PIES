@@ -44,7 +44,10 @@ function Block({ color, icon, title, items, obs, compact, onVerEquipamento }: { 
 }
 
 export function AlertaCompatibilidade({ equipamentoNome, compatibilidade, contexto, onVerEquipamento }: Props) {
-  if (!compatibilidade) return <div className="subtle">Sem dependências mapeadas para {equipamentoNome}.</div>;
+  if (!compatibilidade) {
+    if (contexto === 'aquisicao' || contexto === 'pies' || contexto === 'os') return <span className="subtle">—</span>;
+    return <div className="subtle">Sem dependências mapeadas para {equipamentoNome}.</div>;
+  }
   const totalCritico = compatibilidade.depende_de.length + compatibilidade.requer_instalacao_conjunta.length;
 
   if (contexto === 'os') {
@@ -53,11 +56,35 @@ export function AlertaCompatibilidade({ equipamentoNome, compatibilidade, contex
   }
 
   if (contexto === 'aquisicao' || contexto === 'pies') {
+    const temAlerta = totalCritico > 0 || compatibilidade.temIncompativel || compatibilidade.temAlertaInfo;
+    const tom = totalCritico || compatibilidade.temIncompativel ? 'var(--high)' : 'var(--info)';
+    const titulo = totalCritico
+      ? `${totalCritico} dependência(s) crítica(s) para aquisição`
+      : compatibilidade.temIncompativel
+        ? 'Existe incompatibilidade mapeada'
+        : compatibilidade.temAlertaInfo
+          ? 'Compatibilidade informativa'
+          : 'Compatibilidade sem bloqueios críticos';
+
     return (
-      <div className="card card-pad" style={{ borderColor: totalCritico ? '#ff4f00' : 'var(--border)' }}>
-        <strong style={{ color: totalCritico ? 'var(--high)' : 'var(--info)' }}>{totalCritico ? `${totalCritico} dependência(s) crítica(s) para aquisição` : 'Compatibilidade sem bloqueios críticos'}</strong>
-        <p className="subtle" style={{ marginBottom: 0 }}>{compatibilidade.obs || `Verificação de compatibilidade para ${equipamentoNome}.`}</p>
-      </div>
+      <span className="compat-tooltip-wrap">
+        <span
+          className="compat-icon"
+          style={{ color: temAlerta ? tom : 'var(--low)' }}
+          tabIndex={0}
+          aria-label={`${titulo}. ${compatibilidade.obs || ''}`}
+        >
+          {temAlerta ? <AlertTriangle size={16} /> : <Sparkles size={16} />}
+        </span>
+        <span className="compat-tooltip" role="tooltip">
+          <strong style={{ color: tom }}>{titulo}</strong>
+          {compatibilidade.depende_de.length > 0 && <span>Depende de: {compatibilidade.depende_de.join(', ')}</span>}
+          {compatibilidade.requer_instalacao_conjunta.length > 0 && <span>Instalação conjunta: {compatibilidade.requer_instalacao_conjunta.join(', ')}</span>}
+          {compatibilidade.incompativel_com.length > 0 && <span>Incompatível com: {compatibilidade.incompativel_com.join(', ')}</span>}
+          {compatibilidade.complementado_por.length > 0 && <span>Complementado por: {compatibilidade.complementado_por.slice(0, 5).join(', ')}{compatibilidade.complementado_por.length > 5 ? '...' : ''}</span>}
+          <span className="subtle">{compatibilidade.obs || `Verificação de compatibilidade para ${equipamentoNome}.`}</span>
+        </span>
+      </span>
     );
   }
 
