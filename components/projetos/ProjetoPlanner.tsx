@@ -86,7 +86,7 @@ export function ProjetoPlanner({ ambientes, projetoInicial }: { ambientes: Ambie
 
   return (
     <div className="grid">
-      <section className="card card-pad" style={{ borderColor: 'rgba(59,130,246,.5)' }}>
+      <section className="card card-pad" style={{ borderColor: '#0066b240' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
           <div>
             <div className="badge" style={{ color: 'var(--primary)', marginBottom: 12 }}><Building2 size={14} />Novo projeto hospitalar</div>
@@ -126,7 +126,7 @@ export function ProjetoPlanner({ ambientes, projetoInicial }: { ambientes: Ambie
         <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--low)', fontWeight: 900 }}>{formatBRL(total)}</div><strong>Total editável</strong></div>
       </section>
 
-      {faltantes.length > 0 && <section className="card card-pad" style={{ borderColor: 'rgba(249,115,22,.7)' }}><strong style={{ color: 'var(--high)' }}><AlertTriangle size={16} /> Dependências de aquisição não incluídas</strong><p className="subtle">{faltantes.map((item) => `${item.origem} exige ${item.nome}`).join(' · ')}</p></section>}
+      {faltantes.length > 0 && <section className="card card-pad" style={{ borderColor: '#ff4f00' }}><strong style={{ color: 'var(--high)' }}><AlertTriangle size={16} /> Dependências de aquisição não incluídas</strong><p className="subtle">{faltantes.map((item) => `${item.origem} exige ${item.nome}`).join(' · ')}</p></section>}
 
       <section className="grid grid-2">
         <div className="card card-pad">

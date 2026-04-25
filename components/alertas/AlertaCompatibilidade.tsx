@@ -54,7 +54,7 @@ export function AlertaCompatibilidade({ equipamentoNome, compatibilidade, contex
 
   if (contexto === 'aquisicao' || contexto === 'pies') {
     return (
-      <div className="card card-pad" style={{ borderColor: totalCritico ? 'rgba(249,115,22,.65)' : 'var(--border)' }}>
+      <div className="card card-pad" style={{ borderColor: totalCritico ? '#ff4f00' : 'var(--border)' }}>
         <strong style={{ color: totalCritico ? 'var(--high)' : 'var(--info)' }}>{totalCritico ? `${totalCritico} dependência(s) crítica(s) para aquisição` : 'Compatibilidade sem bloqueios críticos'}</strong>
         <p className="subtle" style={{ marginBottom: 0 }}>{compatibilidade.obs || `Verificação de compatibilidade para ${equipamentoNome}.`}</p>
       </div>

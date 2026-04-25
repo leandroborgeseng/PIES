@@ -36,7 +36,7 @@ export function AquisicaoPlanner({ equipamentos }: { equipamentos: Equip[] }) {
 
   return (
     <div className="grid">
-      <div className="card card-pad" style={{ borderColor: faltantes.length || bloqueios ? 'rgba(249,115,22,.7)' : 'var(--border)' }}>
+      <div className="card card-pad" style={{ borderColor: faltantes.length || bloqueios ? '#ff4f00' : 'var(--border)' }}>
         <h3 className="section-title">Verificação automática de aquisição</h3>
         <p>{escolhidos.length} equipamento(s) selecionados · {faltantes.length} par(es) obrigatório(s) ausentes · {bloqueios} dependência(s) bloqueante(s)</p>
         <strong className="mono" style={{ fontSize: 28 }}>{formatBRL(total)}</strong>
