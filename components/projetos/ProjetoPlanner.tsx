@@ -80,7 +80,8 @@ type AreaSelecionada = Record<number, { quantidade: number }>;
 type EdicaoItem = { quantidade?: number; valorUnitario?: number; excluido?: boolean; justificativa?: string };
 type Edicoes = Record<string, EdicaoItem>;
 
-const CUSTOM_AREAS_STORAGE_KEY = 'aion_custom_areas';
+const EDITABLE_AREAS_STORAGE_KEY = 'aion_editable_areas';
+const LEGACY_CUSTOM_AREAS_STORAGE_KEY = 'aion_custom_areas';
 
 function normalizar(texto: string) {
   return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -135,8 +136,13 @@ function gerarProjetoCustomizado(area: Ambiente, parametroProjeto: number, equip
 }
 
 export function ProjetoPlanner({ ambientes, equipamentos }: { ambientes: Ambiente[]; equipamentos: EquipamentoCatalogo[] }) {
-  const [areasCustomizadas, setAreasCustomizadas] = useState<Ambiente[]>([]);
-  const ambientesDisponiveis = useMemo(() => [...areasCustomizadas, ...ambientes], [ambientes, areasCustomizadas]);
+  const [areasEditadas, setAreasEditadas] = useState<Ambiente[]>([]);
+  const ambientesDisponiveis = useMemo(() => {
+    const editadasPorId = new Map(areasEditadas.map((area) => [area.id, area]));
+    const customizadas = areasEditadas.filter((area) => area.id < 0);
+    const sistemaComSobrescrita = ambientes.map((area) => editadasPorId.get(area.id) ?? area);
+    return [...customizadas, ...sistemaComSobrescrita];
+  }, [ambientes, areasEditadas]);
   const sugestaoInicial = ambientesDisponiveis.find((item) => item.nome === 'Box UTI - Adulto') ?? ambientesDisponiveis[0];
   const [etapa, setEtapa] = useState(1);
   const [nomeProjeto, setNomeProjeto] = useState('Novo Hospital');
@@ -153,8 +159,10 @@ export function ProjetoPlanner({ ambientes, equipamentos }: { ambientes: Ambient
   useEffect(() => {
     function carregarAreasCustomizadas() {
       try {
-        const stored = JSON.parse(window.localStorage.getItem(CUSTOM_AREAS_STORAGE_KEY) ?? '[]') as CustomArea[];
-        setAreasCustomizadas(stored.map((area) => ({
+        const editableRaw = window.localStorage.getItem(EDITABLE_AREAS_STORAGE_KEY);
+        const legacyRaw = window.localStorage.getItem(LEGACY_CUSTOM_AREAS_STORAGE_KEY);
+        const stored = JSON.parse(editableRaw ?? legacyRaw ?? '[]') as CustomArea[];
+        setAreasEditadas(stored.map((area) => ({
           id: area.id,
           nome: area.nome,
           setorNome: area.setorNome,
@@ -163,13 +171,13 @@ export function ProjetoPlanner({ ambientes, equipamentos }: { ambientes: Ambient
           parametroLabel: area.parametroLabel,
           totalItens: area.itens.length,
           investimentoBase: area.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0),
-          rdcReferencia: 'Área customizada pelo usuário',
+          rdcReferencia: area.id < 0 ? 'Área customizada pelo usuário' : 'Área do sistema editada pelo usuário',
           normas: [],
           custom: true,
           itensCustom: area.itens,
         })));
       } catch {
-        setAreasCustomizadas([]);
+        setAreasEditadas([]);
       }
     }
     carregarAreasCustomizadas();

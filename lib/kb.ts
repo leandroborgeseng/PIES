@@ -222,3 +222,27 @@ export function gerarProjetoAmbiente(localidadeId: number, parametroProjeto: num
     recomendados: itens.filter((item) => item.classificacao === 'RECOMENDADO').length,
   };
 }
+
+export function getAreasEditaveis() {
+  return getAmbientesPlanejaveis().map((ambiente) => {
+    const projeto = gerarProjetoAmbiente(ambiente.id, ambiente.baseParametro);
+    return {
+      id: ambiente.id,
+      nome: ambiente.nome,
+      setorNome: ambiente.setorNome,
+      pavimento: ambiente.pavimento,
+      parametroLabel: ambiente.parametroLabel,
+      baseParametro: ambiente.baseParametro,
+      source: 'system' as const,
+      itens: (projeto?.itens ?? []).map((item) => ({
+        id: item.id,
+        equipmentId: item.equipmentId,
+        nome: item.nome,
+        quantidade: item.quantidade,
+        valorUnitario: item.valorUnitario,
+        classificacao: item.classificacao,
+        justificativa: item.justificativa ?? item.rdcReferencia ?? '',
+      })),
+    };
+  });
+}
