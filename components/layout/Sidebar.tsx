@@ -1,14 +1,12 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { Activity, AlertTriangle, BarChart3, ClipboardList, FileText, PackagePlus } from 'lucide-react';
+import { Activity, AlertTriangle, ClipboardList, Settings2 } from 'lucide-react';
 
 const items = [
   { href: '/', label: 'Novo Projeto', icon: ClipboardList },
-  { href: '/dashboard', label: 'Indicadores KB', icon: BarChart3 },
-  { href: '/aquisicao', label: 'Aquisição', icon: PackagePlus },
+  { href: '/areas', label: 'Áreas e Itens', icon: Settings2 },
   { href: '/equipamentos', label: 'Catálogo Técnico', icon: Activity },
   { href: '/alertas', label: 'Alertas ANVISA', icon: AlertTriangle },
-  { href: '/relatorios', label: 'Relatórios', icon: FileText },
 ];
 
 export function Sidebar() {

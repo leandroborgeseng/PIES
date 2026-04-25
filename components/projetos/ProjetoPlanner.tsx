@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { AlertTriangle, Building2, CheckCircle2, ClipboardCheck, FileText, Layers3, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Building2, CheckCircle2, ClipboardCheck, FileText, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { AlertaCompatibilidade } from '@/components/alertas/AlertaCompatibilidade';
 import { RiscoBadge } from '@/components/ui/Badges';
 import { formatBRL } from '@/lib/utils';
@@ -18,6 +18,36 @@ type Ambiente = {
   investimentoBase: number;
   rdcReferencia?: string | null;
   normas: string[];
+  custom?: boolean;
+  itensCustom?: CustomItem[];
+};
+
+type EquipamentoCatalogo = {
+  id: number;
+  nome: string;
+  risco: string;
+  valor: number;
+  compatibilidade: any;
+};
+
+type CustomItem = {
+  id: number;
+  equipmentId: number;
+  nome: string;
+  quantidade: number;
+  valorUnitario: number;
+  classificacao: string;
+  justificativa?: string;
+};
+
+type CustomArea = {
+  id: number;
+  nome: string;
+  setorNome: string;
+  pavimento: string;
+  parametroLabel: string;
+  baseParametro: number;
+  itens: CustomItem[];
 };
 
 type ItemProjeto = {
@@ -50,6 +80,8 @@ type AreaSelecionada = Record<number, { quantidade: number }>;
 type EdicaoItem = { quantidade?: number; valorUnitario?: number; excluido?: boolean; justificativa?: string };
 type Edicoes = Record<string, EdicaoItem>;
 
+const CUSTOM_AREAS_STORAGE_KEY = 'aion_custom_areas';
+
 function normalizar(texto: string) {
   return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
@@ -62,8 +94,50 @@ function classificarObrigatorio(classe: string) {
   return classe === 'OBRIGATÓRIO' || classe === 'OBRIGATORIO';
 }
 
-export function ProjetoPlanner({ ambientes }: { ambientes: Ambiente[] }) {
-  const sugestaoInicial = ambientes.find((item) => item.nome === 'Box UTI - Adulto') ?? ambientes[0];
+function gerarProjetoCustomizado(area: Ambiente, parametroProjeto: number, equipamentos: EquipamentoCatalogo[]): ProjetoAmbiente {
+  const fator = parametroProjeto / Math.max(1, area.baseParametro);
+  const itens = (area.itensCustom ?? []).map((item) => {
+    const equipamento = equipamentos.find((eq) => eq.id === item.equipmentId);
+    const quantidade = Math.max(1, Math.ceil(item.quantidade * fator));
+    const valorUnitario = item.valorUnitario ?? equipamento?.valor ?? 0;
+    return {
+      id: item.id,
+      equipmentId: item.equipmentId,
+      nome: item.nome,
+      quantidade,
+      valorUnitario,
+      valorTotal: quantidade * valorUnitario,
+      classificacao: item.classificacao,
+      rdcReferencia: 'Área customizada pelo usuário',
+      justificativa: item.justificativa ?? null,
+      observacao: item.justificativa ?? null,
+      scalingType: 'CUSTOM',
+      scalingN: null,
+      risco: equipamento?.risco ?? 'N/I',
+      compatibilidade: equipamento?.compatibilidade ?? null,
+    };
+  });
+  return {
+    localidade: {
+      id: area.id,
+      nome: area.nome,
+      setorNome: area.setorNome,
+      pavimento: area.pavimento,
+      rdcReferencia: 'Área customizada pelo usuário',
+      normas: [],
+    },
+    baseParametro: area.baseParametro,
+    parametroProjeto,
+    parametroLabel: area.parametroLabel,
+    itens,
+    investimentoTotal: itens.reduce((sum, item) => sum + item.valorTotal, 0),
+  };
+}
+
+export function ProjetoPlanner({ ambientes, equipamentos }: { ambientes: Ambiente[]; equipamentos: EquipamentoCatalogo[] }) {
+  const [areasCustomizadas, setAreasCustomizadas] = useState<Ambiente[]>([]);
+  const ambientesDisponiveis = useMemo(() => [...areasCustomizadas, ...ambientes], [ambientes, areasCustomizadas]);
+  const sugestaoInicial = ambientesDisponiveis.find((item) => item.nome === 'Box UTI - Adulto') ?? ambientesDisponiveis[0];
   const [etapa, setEtapa] = useState(1);
   const [nomeProjeto, setNomeProjeto] = useState('Novo Hospital');
   const [cliente, setCliente] = useState('');
@@ -76,8 +150,39 @@ export function ProjetoPlanner({ ambientes }: { ambientes: Ambiente[] }) {
   const [classeFiltro, setClasseFiltro] = useState('TODOS');
   const [carregando, setCarregando] = useState(false);
 
-  const setores = useMemo(() => Array.from(new Set(ambientes.map((item) => item.setorNome))).sort(), [ambientes]);
-  const areasFiltradas = ambientes.filter((ambiente) => {
+  useEffect(() => {
+    function carregarAreasCustomizadas() {
+      try {
+        const stored = JSON.parse(window.localStorage.getItem(CUSTOM_AREAS_STORAGE_KEY) ?? '[]') as CustomArea[];
+        setAreasCustomizadas(stored.map((area) => ({
+          id: area.id,
+          nome: area.nome,
+          setorNome: area.setorNome,
+          pavimento: area.pavimento,
+          baseParametro: area.baseParametro,
+          parametroLabel: area.parametroLabel,
+          totalItens: area.itens.length,
+          investimentoBase: area.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0),
+          rdcReferencia: 'Área customizada pelo usuário',
+          normas: [],
+          custom: true,
+          itensCustom: area.itens,
+        })));
+      } catch {
+        setAreasCustomizadas([]);
+      }
+    }
+    carregarAreasCustomizadas();
+    window.addEventListener('aion-custom-areas-updated', carregarAreasCustomizadas);
+    window.addEventListener('storage', carregarAreasCustomizadas);
+    return () => {
+      window.removeEventListener('aion-custom-areas-updated', carregarAreasCustomizadas);
+      window.removeEventListener('storage', carregarAreasCustomizadas);
+    };
+  }, []);
+
+  const setores = useMemo(() => Array.from(new Set(ambientesDisponiveis.map((item) => item.setorNome))).sort(), [ambientesDisponiveis]);
+  const areasFiltradas = ambientesDisponiveis.filter((ambiente) => {
     const texto = normalizar(`${ambiente.setorNome} ${ambiente.nome}`);
     return texto.includes(normalizar(buscaArea)) && (setorFiltro === 'TODOS' || ambiente.setorNome === setorFiltro);
   });
@@ -150,6 +255,8 @@ export function ProjetoPlanner({ ambientes }: { ambientes: Ambiente[] }) {
     setCarregando(true);
     try {
       const respostas = await Promise.all(selecionadas.map(async ([id, config]) => {
+        const area = ambientesDisponiveis.find((ambiente) => ambiente.id === Number(id));
+        if (area?.custom) return gerarProjetoCustomizado(area, config.quantidade, equipamentos);
         const res = await fetch(`/api/projetos/ambiente?localidadeId=${id}&quantidade=${config.quantidade}`);
         const data = await res.json();
         return data.projeto as ProjetoAmbiente;
@@ -213,7 +320,7 @@ export function ProjetoPlanner({ ambientes }: { ambientes: Ambiente[] }) {
               return <div key={ambiente.id} className="card card-pad" style={{ borderColor: selected ? 'var(--primary)' : 'var(--border)' }}>
                 <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                   <input type="checkbox" checked={Boolean(selected)} onChange={() => toggleArea(ambiente)} />
-                  <span><strong>{ambiente.setorNome} · {ambiente.nome}</strong><span className="subtle" style={{ display: 'block' }}>{ambiente.totalItens} itens no KB · base {ambiente.baseParametro} {ambiente.parametroLabel}</span></span>
+                  <span><strong>{ambiente.setorNome} · {ambiente.nome}</strong><span className="subtle" style={{ display: 'block' }}>{ambiente.totalItens} itens {ambiente.custom ? 'customizados' : 'no KB'} · base {ambiente.baseParametro} {ambiente.parametroLabel}</span></span>
                 </label>
                 {selected && <label style={{ display: 'block', marginTop: 12 }}><div className="subtle" style={{ marginBottom: 6 }}>Quantidade de {ambiente.parametroLabel}</div><input className="input mono" type="number" min={1} value={selected.quantidade} onChange={(e) => alterarQuantidadeArea(ambiente.id, Number(e.target.value))} /></label>}
               </div>;
