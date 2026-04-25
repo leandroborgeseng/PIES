@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Building2, CheckCircle2, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, ClipboardCheck, FileText, Layers3, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { AlertaCompatibilidade } from '@/components/alertas/AlertaCompatibilidade';
 import { RiscoBadge } from '@/components/ui/Badges';
 import { formatBRL } from '@/lib/utils';
@@ -20,68 +20,146 @@ type Ambiente = {
   normas: string[];
 };
 
-type Projeto = {
-  localidade: { nome: string; setorNome: string; pavimento: string; rdcReferencia?: string | null; normas: string[]; requisitosInstalacao: any };
+type ItemProjeto = {
+  id: number;
+  equipmentId: number;
+  nome: string;
+  quantidade: number;
+  valorUnitario: number;
+  valorTotal: number;
+  classificacao: string;
+  rdcReferencia?: string | null;
+  justificativa?: string | null;
+  observacao?: string | null;
+  scalingType: string;
+  scalingN?: number | null;
+  risco: string;
+  compatibilidade: any;
+};
+
+type ProjetoAmbiente = {
+  localidade: { id: number; nome: string; setorNome: string; pavimento: string; rdcReferencia?: string | null; normas: string[] };
   baseParametro: number;
   parametroProjeto: number;
   parametroLabel: string;
-  itens: Array<any>;
-  totalItens: number;
+  itens: ItemProjeto[];
   investimentoTotal: number;
-  obrigatorios: number;
-  recomendados: number;
 };
 
-type Quantidades = Record<number, number>;
+type AreaSelecionada = Record<number, { quantidade: number }>;
+type EdicaoItem = { quantidade?: number; valorUnitario?: number; excluido?: boolean; justificativa?: string };
+type Edicoes = Record<string, EdicaoItem>;
 
 function normalizar(texto: string) {
   return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-export function ProjetoPlanner({ ambientes, projetoInicial }: { ambientes: Ambiente[]; projetoInicial: Projeto }) {
-  const [ambienteId, setAmbienteId] = useState(projetoInicial.localidade.nome ? ambientes.find((a) => a.nome === projetoInicial.localidade.nome && a.setorNome === projetoInicial.localidade.setorNome)?.id ?? ambientes[0]?.id : ambientes[0]?.id);
-  const ambiente = ambientes.find((item) => item.id === Number(ambienteId)) ?? ambientes[0];
-  const [parametro, setParametro] = useState(10);
-  const [busca, setBusca] = useState('');
-  const [classe, setClasse] = useState('TODOS');
-  const [quantidades, setQuantidades] = useState<Quantidades>({});
-  const [manualProject, setManualProject] = useState<Projeto>(projetoInicial);
+function itemKey(areaId: number, itemId: number) {
+  return `${areaId}:${itemId}`;
+}
 
-  async function carregarProjeto(nextAmbienteId = ambiente.id, nextParametro = parametro) {
-    const res = await fetch(`/api/projetos/ambiente?localidadeId=${nextAmbienteId}&quantidade=${nextParametro}`);
-    const data = await res.json();
-    setManualProject(data.projeto);
-    setQuantidades({});
-  }
+function classificarObrigatorio(classe: string) {
+  return classe === 'OBRIGATÓRIO' || classe === 'OBRIGATORIO';
+}
 
-  const projeto = manualProject;
-  const itensComEdicao = useMemo(() => projeto.itens.map((item) => {
-    const quantidade = quantidades[item.id] ?? item.quantidade;
-    return { ...item, quantidade, valorTotal: quantidade * item.valorUnitario };
-  }), [projeto.itens, quantidades]);
+export function ProjetoPlanner({ ambientes }: { ambientes: Ambiente[] }) {
+  const sugestaoInicial = ambientes.find((item) => item.nome === 'Box UTI - Adulto') ?? ambientes[0];
+  const [etapa, setEtapa] = useState(1);
+  const [nomeProjeto, setNomeProjeto] = useState('Novo Hospital');
+  const [cliente, setCliente] = useState('');
+  const [buscaArea, setBuscaArea] = useState('UTI');
+  const [setorFiltro, setSetorFiltro] = useState('TODOS');
+  const [areasSelecionadas, setAreasSelecionadas] = useState<AreaSelecionada>(() => sugestaoInicial ? { [sugestaoInicial.id]: { quantidade: 10 } } : {});
+  const [projetos, setProjetos] = useState<ProjetoAmbiente[]>([]);
+  const [edicoes, setEdicoes] = useState<Edicoes>({});
+  const [buscaItem, setBuscaItem] = useState('');
+  const [classeFiltro, setClasseFiltro] = useState('TODOS');
+  const [carregando, setCarregando] = useState(false);
 
-  const itensFiltrados = itensComEdicao.filter((item) => {
-    const matchBusca = normalizar(item.nome).includes(normalizar(busca));
-    const matchClasse = classe === 'TODOS' || item.classificacao === classe;
+  const setores = useMemo(() => Array.from(new Set(ambientes.map((item) => item.setorNome))).sort(), [ambientes]);
+  const areasFiltradas = ambientes.filter((ambiente) => {
+    const texto = normalizar(`${ambiente.setorNome} ${ambiente.nome}`);
+    return texto.includes(normalizar(buscaArea)) && (setorFiltro === 'TODOS' || ambiente.setorNome === setorFiltro);
+  });
+
+  const itensConsolidados = useMemo(() => projetos.flatMap((projeto) => projeto.itens.map((item) => {
+    const key = itemKey(projeto.localidade.id, item.id);
+    const edicao = edicoes[key] ?? {};
+    const quantidadeFinal = edicao.quantidade ?? item.quantidade;
+    const valorFinal = edicao.valorUnitario ?? item.valorUnitario;
+    const excluido = Boolean(edicao.excluido);
+    return {
+      ...item,
+      key,
+      areaId: projeto.localidade.id,
+      areaNome: projeto.localidade.nome,
+      setorNome: projeto.localidade.setorNome,
+      quantidadeSistema: item.quantidade,
+      valorSistema: item.valorUnitario,
+      quantidadeFinal,
+      valorFinal,
+      totalFinal: excluido ? 0 : quantidadeFinal * valorFinal,
+      excluido,
+      justificativaAlteracao: edicao.justificativa ?? '',
+    };
+  })), [edicoes, projetos]);
+
+  const itensVisiveis = itensConsolidados.filter((item) => {
+    const matchBusca = normalizar(`${item.nome} ${item.areaNome} ${item.setorNome}`).includes(normalizar(buscaItem));
+    const matchClasse = classeFiltro === 'TODOS' || item.classificacao === classeFiltro;
     return matchBusca && matchClasse;
   });
 
-  const total = itensComEdicao.reduce((sum, item) => sum + item.valorTotal, 0);
-  const faltantes = itensComEdicao.flatMap((item) => (item.compatibilidade?.requer_instalacao_conjunta ?? []).filter((nome: string) => !itensComEdicao.some((i) => i.nome === nome)).map((nome: string) => ({ origem: item.nome, nome })));
-  const obrigatorios = itensComEdicao.filter((item) => item.classificacao === 'OBRIGATÓRIO' || item.classificacao === 'OBRIGATORIO');
+  const apontamentos = itensConsolidados.filter((item) => item.excluido || item.quantidadeFinal !== item.quantidadeSistema || item.valorFinal !== item.valorSistema);
+  const apontamentosSemJustificativa = apontamentos.filter((item) => !item.justificativaAlteracao.trim());
+  const totalSistema = projetos.reduce((sum, projeto) => sum + projeto.investimentoTotal, 0);
+  const totalFinal = itensConsolidados.reduce((sum, item) => sum + item.totalFinal, 0);
+  const totalAreas = Object.keys(areasSelecionadas).length;
 
-  function alterarAmbiente(id: number) {
-    setAmbienteId(id);
-    const next = ambientes.find((item) => item.id === id);
-    const nextParametro = next?.baseParametro ?? parametro;
-    setParametro(nextParametro);
-    void carregarProjeto(id, nextParametro);
+  function toggleArea(ambiente: Ambiente) {
+    setAreasSelecionadas((current) => {
+      const next = { ...current };
+      if (next[ambiente.id]) delete next[ambiente.id];
+      else next[ambiente.id] = { quantidade: ambiente.baseParametro || 1 };
+      return next;
+    });
   }
 
-  function alterarParametro(value: number) {
-    const next = Math.max(1, value || 1);
-    setParametro(next);
-    void carregarProjeto(ambiente.id, next);
+  function alterarQuantidadeArea(ambienteId: number, quantidade: number) {
+    setAreasSelecionadas((current) => ({
+      ...current,
+      [ambienteId]: { quantidade: Math.max(1, quantidade || 1) },
+    }));
+  }
+
+  function atualizarEdicao(key: string, patch: EdicaoItem) {
+    setEdicoes((current) => ({ ...current, [key]: { ...(current[key] ?? {}), ...patch } }));
+  }
+
+  function resetarItem(key: string) {
+    setEdicoes((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  async function popularProjeto() {
+    const selecionadas = Object.entries(areasSelecionadas);
+    if (!selecionadas.length) return;
+    setCarregando(true);
+    try {
+      const respostas = await Promise.all(selecionadas.map(async ([id, config]) => {
+        const res = await fetch(`/api/projetos/ambiente?localidadeId=${id}&quantidade=${config.quantidade}`);
+        const data = await res.json();
+        return data.projeto as ProjetoAmbiente;
+      }));
+      setProjetos(respostas.filter(Boolean));
+      setEdicoes({});
+      setEtapa(3);
+    } finally {
+      setCarregando(false);
+    }
   }
 
   return (
@@ -89,91 +167,137 @@ export function ProjetoPlanner({ ambientes, projetoInicial }: { ambientes: Ambie
       <section className="card card-pad" style={{ borderColor: '#0066b240' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
           <div>
-            <div className="badge" style={{ color: 'var(--primary)', marginBottom: 12 }}><Building2 size={14} />Novo projeto hospitalar</div>
-            <h2 className="title">Monte o hospital por ambientes</h2>
-            <p className="subtle" style={{ maxWidth: 760 }}>Escolha uma unidade funcional, informe a quantidade de leitos/salas e o AION dimensiona automaticamente equipamentos, valores, requisitos técnicos e dependências regulatórias.</p>
+            <div className="badge" style={{ color: 'var(--primary)', marginBottom: 12 }}><Building2 size={14} />Fluxo de projeto hospitalar</div>
+            <h2 className="title">Crie o projeto, escolha as áreas e feche os apontamentos</h2>
+            <p className="subtle" style={{ maxWidth: 820 }}>O AION popula os equipamentos sugeridos para cada área. Você pode aceitar, alterar quantidade/preço ou excluir itens, sempre registrando a justificativa das mudanças.</p>
           </div>
-          <div className="card card-pad" style={{ minWidth: 240 }}>
-            <div className="subtle">Investimento estimado</div>
-            <strong className="mono" style={{ fontSize: 30, color: 'var(--low)' }}>{formatBRL(total)}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="card card-pad">
-        <div className="grid grid-3">
-          <label>
-            <div className="subtle" style={{ marginBottom: 6 }}>Ambiente / unidade funcional</div>
-            <select className="select" value={ambiente.id} onChange={(e) => alterarAmbiente(Number(e.target.value))}>
-              {ambientes.map((item) => <option key={item.id} value={item.id}>{item.setorNome} · {item.nome}</option>)}
-            </select>
-          </label>
-          <label>
-            <div className="subtle" style={{ marginBottom: 6 }}>Quantidade de {projeto.parametroLabel}</div>
-            <input className="input mono" type="number" min={1} value={parametro} onChange={(e) => alterarParametro(Number(e.target.value))} />
-          </label>
-          <div>
-            <div className="subtle" style={{ marginBottom: 6 }}>Base de referência</div>
-            <div className="card card-pad" style={{ padding: 11 }}>{projeto.baseParametro} {projeto.parametroLabel} no KB · {projeto.totalItens} itens</div>
+          <div className="card card-pad" style={{ minWidth: 260 }}>
+            <div className="subtle">Total final do projeto</div>
+            <strong className="mono" style={{ fontSize: 30, color: 'var(--low)' }}>{formatBRL(totalFinal || totalSistema)}</strong>
+            <div className="subtle" style={{ marginTop: 6 }}>{totalAreas} área(s) · {itensConsolidados.length || '—'} item(ns)</div>
           </div>
         </div>
       </section>
 
       <section className="grid grid-4">
-        <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--primary)', fontWeight: 900 }}>{itensComEdicao.length}</div><strong>Itens projetados</strong></div>
-        <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--critical)', fontWeight: 900 }}>{obrigatorios.length}</div><strong>Obrigatórios</strong></div>
-        <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--high)', fontWeight: 900 }}>{faltantes.length}</div><strong>Pares faltantes</strong></div>
-        <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--low)', fontWeight: 900 }}>{formatBRL(total)}</div><strong>Total editável</strong></div>
+        {[['1', 'Projeto'], ['2', 'Áreas'], ['3', 'Itens'], ['4', 'Fechamento']].map(([numero, label]) => (
+          <button key={numero} className={`card card-pad ${etapa === Number(numero) ? '' : ''}`} style={{ textAlign: 'left', borderColor: etapa === Number(numero) ? 'var(--primary)' : 'var(--border)', cursor: 'pointer' }} onClick={() => setEtapa(Number(numero))}>
+            <div className="badge" style={{ color: etapa === Number(numero) ? 'var(--primary)' : 'var(--muted)' }}>{numero}</div>
+            <strong style={{ display: 'block', marginTop: 8 }}>{label}</strong>
+          </button>
+        ))}
       </section>
 
-      {faltantes.length > 0 && <section className="card card-pad" style={{ borderColor: '#ff4f00' }}><strong style={{ color: 'var(--high)' }}><AlertTriangle size={16} /> Dependências de aquisição não incluídas</strong><p className="subtle">{faltantes.map((item) => `${item.origem} exige ${item.nome}`).join(' · ')}</p></section>}
-
-      <section className="grid grid-2">
-        <div className="card card-pad">
-          <h3 className="section-title">Requisitos do ambiente</h3>
-          <p><strong>{projeto.localidade.setorNome}</strong> · {projeto.localidade.nome}</p>
-          <p className="subtle">{projeto.localidade.rdcReferencia ?? 'Sem referência RDC específica no KB.'}</p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{projeto.localidade.normas.map((norma) => <span className="badge" style={{ color: 'var(--info)' }} key={norma}>{norma}</span>)}</div>
-        </div>
-        <div className="card card-pad">
-          <h3 className="section-title">Como o cálculo está sendo feito</h3>
-          <p className="subtle">Itens `PER_BED` são escalados pela proporção da base do KB. Itens `PER_N_BEDS` usam grupos de leitos. Itens `FIXED` permanecem fixos e podem ser ajustados manualmente na tabela.</p>
-          <div className="badge" style={{ color: 'var(--low)' }}><CheckCircle2 size={14} />Você pode alterar qualquer quantidade antes de fechar o projeto</div>
-        </div>
-      </section>
-
-      <section className="card card-pad">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
-            <input className="input" style={{ maxWidth: 360 }} placeholder="Buscar equipamento no projeto" value={busca} onChange={(e) => setBusca(e.target.value)} />
-            <select className="select" style={{ maxWidth: 220 }} value={classe} onChange={(e) => setClasse(e.target.value)}>
-              <option value="TODOS">Todas as classes</option>
-              <option value="OBRIGATÓRIO">Obrigatório</option>
-              <option value="RECOMENDADO">Recomendado</option>
-              <option value="CONDICIONAL">Condicional</option>
-              <option value="OPCIONAL">Opcional</option>
-            </select>
+      {etapa === 1 && (
+        <section className="card card-pad">
+          <h3 className="section-title">1. Criar novo projeto</h3>
+          <div className="grid grid-2">
+            <label><div className="subtle" style={{ marginBottom: 6 }}>Nome do projeto</div><input className="input" value={nomeProjeto} onChange={(e) => setNomeProjeto(e.target.value)} placeholder="Ex.: Hospital Municipal — Etapa 1" /></label>
+            <label><div className="subtle" style={{ marginBottom: 6 }}>Cliente / unidade</div><input className="input" value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Ex.: Prefeitura, OSS, grupo hospitalar" /></label>
           </div>
-          <div className="badge" style={{ color: 'var(--primary)' }}><SlidersHorizontal size={14} />Tabela editável</div>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Equipamento</th><th>Classe</th><th>Qtd</th><th>Valor unit.</th><th>Total</th><th>Risco</th><th>Regra</th><th>Compatibilidade</th></tr></thead>
-            <tbody>
-              {itensFiltrados.map((item) => <tr key={item.id}>
-                <td><strong>{item.nome}</strong><div className="subtle">{item.justificativa ?? item.rdcReferencia ?? 'Sem justificativa no KB'}</div>{item.equipmentId && <Link className="subtle" href={`/equipamentos/${item.equipmentId}`}>abrir detalhe</Link>}</td>
-                <td><span className="badge" style={{ color: item.classificacao === 'OBRIGATÓRIO' ? 'var(--critical)' : 'var(--primary)' }}>{item.classificacao}</span></td>
-                <td><input className="input mono" style={{ width: 86 }} type="number" min={0} value={item.quantidade} onChange={(e) => setQuantidades((current) => ({ ...current, [item.id]: Number(e.target.value) || 0 }))} /></td>
-                <td>{formatBRL(item.valorUnitario)}</td>
-                <td><strong>{formatBRL(item.valorTotal)}</strong></td>
-                <td><RiscoBadge nivel={item.risco} /></td>
-                <td className="subtle">{item.scalingType}{item.scalingN ? ` / ${item.scalingN}` : ''}</td>
-                <td><AlertaCompatibilidade equipamentoNome={item.nome} compatibilidade={item.compatibilidade} contexto="aquisicao" /></td>
-              </tr>)}
-            </tbody>
-          </table>
-        </div>
-      </section>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}><button className="button" onClick={() => setEtapa(2)}>Escolher áreas</button></div>
+        </section>
+      )}
+
+      {etapa === 2 && (
+        <section className="card card-pad">
+          <h3 className="section-title">2. Escolher áreas que contemplarão o projeto</h3>
+          <div className="grid grid-3" style={{ marginBottom: 14 }}>
+            <input className="input" placeholder="Buscar área, ex.: UTI adulto" value={buscaArea} onChange={(e) => setBuscaArea(e.target.value)} />
+            <select className="select" value={setorFiltro} onChange={(e) => setSetorFiltro(e.target.value)}><option value="TODOS">Todos os setores</option>{setores.map((setor) => <option key={setor}>{setor}</option>)}</select>
+            <button className="button" disabled={!totalAreas || carregando} onClick={popularProjeto}>{carregando ? 'Populando...' : `Popular ${totalAreas} área(s)`}</button>
+          </div>
+          <div className="grid grid-2">
+            {areasFiltradas.map((ambiente) => {
+              const selected = areasSelecionadas[ambiente.id];
+              return <div key={ambiente.id} className="card card-pad" style={{ borderColor: selected ? 'var(--primary)' : 'var(--border)' }}>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <input type="checkbox" checked={Boolean(selected)} onChange={() => toggleArea(ambiente)} />
+                  <span><strong>{ambiente.setorNome} · {ambiente.nome}</strong><span className="subtle" style={{ display: 'block' }}>{ambiente.totalItens} itens no KB · base {ambiente.baseParametro} {ambiente.parametroLabel}</span></span>
+                </label>
+                {selected && <label style={{ display: 'block', marginTop: 12 }}><div className="subtle" style={{ marginBottom: 6 }}>Quantidade de {ambiente.parametroLabel}</div><input className="input mono" type="number" min={1} value={selected.quantidade} onChange={(e) => alterarQuantidadeArea(ambiente.id, Number(e.target.value))} /></label>}
+              </div>;
+            })}
+          </div>
+        </section>
+      )}
+
+      {etapa === 3 && (
+        <section className="grid">
+          <div className="grid grid-4">
+            <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--primary)', fontWeight: 900 }}>{projetos.length}</div><strong>Áreas populadas</strong></div>
+            <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--primary)', fontWeight: 900 }}>{itensConsolidados.length}</div><strong>Itens sugeridos</strong></div>
+            <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--high)', fontWeight: 900 }}>{apontamentos.length}</div><strong>Alterações</strong></div>
+            <div className="card card-pad"><div className="mono" style={{ fontSize: 30, color: 'var(--low)', fontWeight: 900 }}>{formatBRL(totalFinal)}</div><strong>Total final</strong></div>
+          </div>
+
+          <div className="card card-pad">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
+                <input className="input" style={{ maxWidth: 360 }} placeholder="Buscar equipamento ou área" value={buscaItem} onChange={(e) => setBuscaItem(e.target.value)} />
+                <select className="select" style={{ maxWidth: 220 }} value={classeFiltro} onChange={(e) => setClasseFiltro(e.target.value)}><option value="TODOS">Todas as classes</option><option value="OBRIGATÓRIO">Obrigatório</option><option value="RECOMENDADO">Recomendado</option><option value="CONDICIONAL">Condicional</option><option value="OPCIONAL">Opcional</option></select>
+              </div>
+              <div className="badge" style={{ color: 'var(--primary)' }}><SlidersHorizontal size={14} />Quantidade, preço, exclusão e justificativa</div>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Área / item</th><th>Classe</th><th>Sistema</th><th>Usuário</th><th>Preço usuário</th><th>Total</th><th>Status</th><th>Justificativa</th></tr></thead>
+                <tbody>
+                  {itensVisiveis.map((item) => {
+                    const alterado = item.excluido || item.quantidadeFinal !== item.quantidadeSistema || item.valorFinal !== item.valorSistema;
+                    return <tr key={item.key} style={{ opacity: item.excluido ? .55 : 1 }}>
+                      <td><strong>{item.nome}</strong><div className="subtle">{item.setorNome} · {item.areaNome}</div>{item.equipmentId && <Link className="subtle" href={`/equipamentos/${item.equipmentId}`}>abrir detalhe técnico</Link>}<div style={{ marginTop: 8 }}><AlertaCompatibilidade equipamentoNome={item.nome} compatibilidade={item.compatibilidade} contexto="aquisicao" /></div></td>
+                      <td><span className="badge" style={{ color: classificarObrigatorio(item.classificacao) ? 'var(--critical)' : 'var(--primary)' }}>{item.classificacao}</span><div style={{ marginTop: 8 }}><RiscoBadge nivel={item.risco} /></div></td>
+                      <td className="mono">{item.quantidadeSistema} un.<br />{formatBRL(item.valorSistema)}</td>
+                      <td><input className="input mono" style={{ width: 86 }} type="number" min={0} value={item.quantidadeFinal} disabled={item.excluido} onChange={(e) => atualizarEdicao(item.key, { quantidade: Number(e.target.value) || 0 })} /></td>
+                      <td><input className="input mono" style={{ width: 130 }} type="number" min={0} value={item.valorFinal} disabled={item.excluido} onChange={(e) => atualizarEdicao(item.key, { valorUnitario: Number(e.target.value) || 0 })} /></td>
+                      <td><strong>{formatBRL(item.totalFinal)}</strong></td>
+                      <td><button className="button secondary" type="button" onClick={() => atualizarEdicao(item.key, { excluido: !item.excluido })}><Trash2 size={14} /> {item.excluido ? 'Reincluir' : 'Excluir'}</button>{alterado && <button className="button secondary" type="button" style={{ marginTop: 8 }} onClick={() => resetarItem(item.key)}>Usar sistema</button>}</td>
+                      <td><textarea className="textarea" placeholder={alterado ? 'Obrigatório: explique a alteração' : 'Sem alteração'} value={item.justificativaAlteracao} disabled={!alterado} onChange={(e) => atualizarEdicao(item.key, { justificativa: e.target.value })} style={{ minWidth: 220, minHeight: 74, borderColor: alterado && !item.justificativaAlteracao.trim() ? 'var(--high)' : undefined }} /></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, gap: 12, flexWrap: 'wrap' }}>
+              <button className="button secondary" onClick={() => setEtapa(2)}>Voltar para áreas</button>
+              <button className="button" onClick={() => setEtapa(4)}>Fechar e revisar apontamentos</button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {etapa === 4 && (
+        <section className="grid">
+          <div className="card card-pad">
+            <div className="badge" style={{ color: apontamentosSemJustificativa.length ? 'var(--high)' : 'var(--low)', marginBottom: 12 }}>{apontamentosSemJustificativa.length ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}{apontamentosSemJustificativa.length ? `${apontamentosSemJustificativa.length} justificativa(s) pendente(s)` : 'Projeto pronto para fechamento'}</div>
+            <h3 className="section-title">4. Fechamento do projeto</h3>
+            <p><strong>{nomeProjeto}</strong>{cliente ? ` · ${cliente}` : ''}</p>
+            <div className="grid grid-3">
+              <div className="card card-pad"><div className="subtle">Valor pelo sistema</div><strong className="mono">{formatBRL(totalSistema)}</strong></div>
+              <div className="card card-pad"><div className="subtle">Valor final usuário</div><strong className="mono">{formatBRL(totalFinal)}</strong></div>
+              <div className="card card-pad"><div className="subtle">Diferença</div><strong className="mono" style={{ color: totalFinal - totalSistema < 0 ? 'var(--high)' : 'var(--low)' }}>{formatBRL(totalFinal - totalSistema)}</strong></div>
+            </div>
+          </div>
+
+          <div className="card card-pad">
+            <h3 className="section-title"><ClipboardCheck size={18} /> Apontamentos de alteração</h3>
+            {!apontamentos.length ? <p className="subtle">Nenhuma alteração registrada. O projeto segue exatamente as quantidades e preços sugeridos pelo sistema.</p> : <div className="grid">
+              {apontamentos.map((item) => <div key={item.key} className="card card-pad" style={{ borderColor: item.justificativaAlteracao.trim() ? 'var(--border)' : 'var(--high)' }}>
+                <strong>{item.nome}</strong>
+                <p className="subtle">{item.setorNome} · {item.areaNome}</p>
+                <p>{item.excluido ? 'Item excluído pelo usuário.' : `Sistema sugeriu ${item.quantidadeSistema} un. a ${formatBRL(item.valorSistema)}; usuário escolheu ${item.quantidadeFinal} un. a ${formatBRL(item.valorFinal)}.`}</p>
+                <textarea className="textarea" placeholder="Justificativa da alteração" value={item.justificativaAlteracao} onChange={(e) => atualizarEdicao(item.key, { justificativa: e.target.value })} style={{ minHeight: 76, borderColor: !item.justificativaAlteracao.trim() ? 'var(--high)' : undefined }} />
+              </div>)}
+            </div>}
+          </div>
+
+          <div className="card card-pad">
+            <h3 className="section-title"><FileText size={18} /> Resumo das áreas contempladas</h3>
+            <div className="grid grid-2">{projetos.map((projeto) => <div key={projeto.localidade.id} className="card card-pad"><strong>{projeto.localidade.setorNome} · {projeto.localidade.nome}</strong><p className="subtle">{projeto.parametroProjeto} {projeto.parametroLabel} · {projeto.itens.length} itens sugeridos · base {projeto.baseParametro}</p></div>)}</div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
