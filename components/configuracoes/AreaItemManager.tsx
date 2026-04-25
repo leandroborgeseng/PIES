@@ -83,12 +83,16 @@ export function AreaItemManager({ areasSistema, equipamentos }: { areasSistema: 
   const [areaAtivaId, setAreaAtivaId] = useState<number | null>(areasSistema[0]?.id ?? null);
   const [buscaArea, setBuscaArea] = useState('');
   const [buscaEquipamento, setBuscaEquipamento] = useState('');
+  const [temAlteracoes, setTemAlteracoes] = useState(false);
+  const [salvoEm, setSalvoEm] = useState<string | null>(null);
   const areaAtiva = areas.find((area) => area.id === areaAtivaId) ?? areas[0];
 
   useEffect(() => {
     const loaded = carregarAreas(areasSistema);
     setAreas(loaded);
     setAreaAtivaId(loaded[0]?.id ?? null);
+    setTemAlteracoes(false);
+    setSalvoEm(null);
   }, [areasSistema]);
 
   const areasFiltradas = useMemo(() => areas.filter((area) => normalizar(`${area.setorNome} ${area.nome}`).includes(normalizar(buscaArea))), [areas, buscaArea]);
@@ -98,8 +102,15 @@ export function AreaItemManager({ areasSistema, equipamentos }: { areasSistema: 
 
   function persistir(next: EditableArea[]) {
     setAreas(next);
-    salvarAreas(next);
+    setTemAlteracoes(true);
+    setSalvoEm(null);
     if (!next.some((area) => area.id === areaAtivaId)) setAreaAtivaId(next[0]?.id ?? null);
+  }
+
+  function salvarAlteracoes() {
+    salvarAreas(areas);
+    setTemAlteracoes(false);
+    setSalvoEm(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
   }
 
   function adicionarArea() {
@@ -154,9 +165,14 @@ export function AreaItemManager({ areasSistema, equipamentos }: { areasSistema: 
           <div>
             <div className="badge" style={{ color: 'var(--primary)', marginBottom: 10 }}>Editor da base de planejamento</div>
             <h2 className="title">Áreas e itens do sistema</h2>
-            <p className="subtle" style={{ maxWidth: 840 }}>Edite áreas e itens vindos do KB ou cadastre áreas novas. As alterações ficam salvas localmente e substituem a área original no fluxo de Novo Projeto.</p>
+            <p className="subtle" style={{ maxWidth: 840 }}>Edite áreas e itens vindos do KB ou cadastre áreas novas. Clique em salvar para aplicar as alterações no fluxo de Novo Projeto.</p>
           </div>
-          <button className="button" onClick={adicionarArea}><Plus size={16} /> Nova área</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {temAlteracoes && <span className="badge" style={{ color: 'var(--high)' }}>Alterações não salvas</span>}
+            {salvoEm && <span className="badge" style={{ color: 'var(--low)' }}>Salvo às {salvoEm}</span>}
+            <button className="button secondary" onClick={adicionarArea}><Plus size={16} /> Nova área</button>
+            <button className="button" onClick={salvarAlteracoes} disabled={!temAlteracoes}><Save size={16} /> Salvar alterações</button>
+          </div>
         </div>
       </section>
 
@@ -221,7 +237,10 @@ export function AreaItemManager({ areasSistema, equipamentos }: { areasSistema: 
                 </tbody>
               </table>
             </div>
-            <div className="badge" style={{ color: 'var(--low)' }}><Save size={14} />Salvo automaticamente no navegador</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+              {temAlteracoes && <span className="badge" style={{ color: 'var(--high)' }}>Existem alterações pendentes</span>}
+              <button className="button" onClick={salvarAlteracoes} disabled={!temAlteracoes}><Save size={16} /> Salvar alterações</button>
+            </div>
           </div> : <p className="subtle">Crie ou selecione uma área para editar.</p>}
         </div>
       </section>
